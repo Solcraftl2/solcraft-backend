@@ -175,11 +175,20 @@ def send_email(to, subject, body):
 # Routes
 @app.route('/')
 def home():
-    return jsonify({
-        "status": "success",
-        "message": "SolCraft API is running",
-        "version": "1.0.0"
-    })
+    try:
+        # Risposta semplificata per l'endpoint radice per evitare errori in ambiente serverless
+        return jsonify({
+            "status": "success",
+            "message": "SolCraft API is running",
+            "version": "1.0.0"
+        })
+    except Exception as e:
+        # Gestione esplicita delle eccezioni per l'endpoint radice
+        return jsonify({
+            "status": "error",
+            "message": "Error in root endpoint",
+            "error": str(e)
+        }), 500
 
 @app.route('/api/tournaments', methods=['GET'])
 def get_tournaments():
