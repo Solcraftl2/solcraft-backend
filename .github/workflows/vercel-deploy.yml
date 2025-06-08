@@ -1,11 +1,9 @@
 name: Deploy to Vercel
-
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -31,6 +29,17 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel
         
+      - name: Debug Secrets
+        run: |
+          echo "Checking if secrets are available (without revealing values)..."
+          if [ -n "$VERCEL_TOKEN" ]; then echo "VERCEL_TOKEN is set and not empty"; else echo "VERCEL_TOKEN is not set or empty"; fi
+          if [ -n "$VERCEL_ORG_ID" ]; then echo "VERCEL_ORG_ID is set and not empty"; else echo "VERCEL_ORG_ID is not set or empty"; fi
+          if [ -n "$VERCEL_PROJECT_ID" ]; then echo "VERCEL_PROJECT_ID is set and not empty"; else echo "VERCEL_PROJECT_ID is not set or empty"; fi
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -47,13 +56,19 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
           echo "Deploying to Vercel..."
-          vercel --token ${VERCEL_TOKEN} --prod --yes \
-            -e DATABASE_URL=${DATABASE_URL} \
-            -e POSTGRES_URL=${POSTGRES_URL} \
-            -e SUPABASE_URL=${SUPABASE_URL} \
-            -e SUPABASE_KEY=${SUPABASE_KEY} \
-            -e JWT_SECRET=${JWT_SECRET} \
-            -e SMTP_HOST=${SMTP_HOST} \
-            -e SMTP_PORT=${SMTP_PORT} \
-            -e SMTP_USER=${SMTP_USER} \
-            -e SMTP_PASS=${SMTP_PASS}
+          # Esporta esplicitamente le variabili Vercel
+          export VERCEL_TOKEN
+          export VERCEL_ORG_ID
+          export VERCEL_PROJECT_ID
+          
+          # Usa le variabili esportate con il comando vercel
+          vercel --token "$VERCEL_TOKEN" --prod --yes \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e POSTGRES_URL="${POSTGRES_URL}" \
+            -e SUPABASE_URL="${SUPABASE_URL}" \
+            -e SUPABASE_KEY="${SUPABASE_KEY}" \
+            -e JWT_SECRET="${JWT_SECRET}" \
+            -e SMTP_HOST="${SMTP_HOST}" \
+            -e SMTP_PORT="${SMTP_PORT}" \
+            -e SMTP_USER="${SMTP_USER}" \
+            -e SMTP_PASS="${SMTP_PASS}"
