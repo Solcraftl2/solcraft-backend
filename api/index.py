@@ -12,6 +12,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import supabase
 
+# Aggiornamento per trigger deploy con supporto PostgreSQL su Supabase
+
 app = Flask(__name__)
 CORS(app)
 
