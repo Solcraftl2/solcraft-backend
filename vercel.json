@@ -11,14 +11,5 @@
       "src": "/api/(.*)",
       "dest": "/api/index.py"
     }
-  ],
-  "env": {
-    "POSTGRES_URL": "@postgres_url",
-    "JWT_SECRET": "@jwt_secret",
-    "SMTP_HOST": "@smtp_host",
-    "SMTP_PORT": "@smtp_port",
-    "SMTP_USER": "@smtp_user",
-    "SMTP_PASS": "@smtp_pass"
-  }
+  ]
 }
-
