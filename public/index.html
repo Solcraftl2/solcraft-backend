@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SolCraft L2 API</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h2 {
+            color: #2980b9;
+            margin-top: 30px;
+        }
+        .endpoint {
+            background-color: #f8f9fa;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .endpoint h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        code {
+            background-color: #f1f1f1;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .version {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SolCraft L2 API</h1>
+        <p class="version">Versione: 1.0.0</p>
+        <p>Benvenuto nell'API di SolCraft L2. Questa pagina fornisce informazioni sugli endpoint disponibili e sul loro stato attuale.</p>
+        
+        <h2>Stato API <span class="status success">Attiva</span></h2>
+        <p>L'API è attualmente attiva e funzionante. Tutti gli endpoint sono disponibili per l'uso.</p>
+        
+        <h2>Endpoint Disponibili</h2>
+        
+        <div class="endpoint">
+            <h3>Informazioni API</h3>
+            <p><code>GET /api</code></p>
+            <p>Restituisce informazioni di base sull'API, inclusa la versione e lo stato.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Elenco Tornei</h3>
+            <p><code>GET /api/tournaments</code></p>
+            <p>Restituisce l'elenco di tutti i tornei disponibili.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Dettagli Torneo</h3>
+            <p><code>GET /api/tournaments/:id</code></p>
+            <p>Restituisce i dettagli di un torneo specifico, inclusi gli investimenti associati.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Creazione Torneo</h3>
+            <p><code>POST /api/tournaments</code></p>
+            <p>Crea un nuovo torneo con i dettagli forniti.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Creazione Investimento</h3>
+            <p><code>POST /api/investments</code></p>
+            <p>Crea un nuovo investimento per un torneo specifico.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Registrazione Utente</h3>
+            <p><code>POST /api/users/register</code></p>
+            <p>Registra un nuovo utente nel sistema.</p>
+        </div>
+        
+        <div class="endpoint">
+            <h3>Login Utente</h3>
+            <p><code>POST /api/users/login</code></p>
+            <p>Autentica un utente e restituisce un token JWT.</p>
+        </div>
+        
+        <h2>Documentazione</h2>
+        <p>Per ulteriori informazioni sull'utilizzo dell'API, consulta la documentazione completa o contatta il team di sviluppo.</p>
+        
+        <p style="margin-top: 40px; text-align: center; color: #6c757d;">
+            &copy; 2025 SolCraft L2. Tutti i diritti riservati.
+        </p>
+    </div>
+</body>
+</html>
