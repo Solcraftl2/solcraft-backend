@@ -190,6 +190,29 @@ def home():
             "error": str(e)
         }), 500
 
+# Aggiunto endpoint esplicito per /api
+@app.route('/api')
+def api_info():
+    try:
+        return jsonify({
+            "status": "success",
+            "message": "SolCraft API is running",
+            "version": "1.0.0",
+            "endpoints": [
+                {"path": "/api/tournaments", "methods": ["GET", "POST"], "description": "Get all tournaments or create a new one"},
+                {"path": "/api/tournaments/:id", "methods": ["GET"], "description": "Get details of a specific tournament"},
+                {"path": "/api/users/register", "methods": ["POST"], "description": "Register a new user"},
+                {"path": "/api/users/login", "methods": ["POST"], "description": "Login a user"},
+                {"path": "/api/investments", "methods": ["POST"], "description": "Create a new investment"}
+            ]
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "Error in API info endpoint",
+            "error": str(e)
+        }), 500
+
 @app.route('/api/tournaments', methods=['GET'])
 def get_tournaments():
     conn = get_db_connection()
@@ -512,7 +535,7 @@ def login_user():
             token = generate_token(user['id'])
             
             # Remove password hash from response
-            del user['password_hash']
+            user.pop('password_hash', None)
             
             cur.close()
             conn.close()
@@ -536,77 +559,3 @@ def login_user():
             "status": "error",
             "message": "Database connection error"
         }), 500
-
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Get total tournaments
-            cur.execute("SELECT COUNT(*) as total_tournaments FROM tournaments")
-            total_tournaments = cur.fetchone()['total_tournaments']
-            
-            # Get total users
-            cur.execute("SELECT COUNT(*) as total_users FROM users")
-            total_users = cur.fetchone()['total_users']
-            
-            # Get total investments
-            cur.execute("SELECT SUM(amount) as total_volume FROM investments")
-            result = cur.fetchone()
-            total_volume = result['total_volume'] if result['total_volume'] else 0
-            
-            # Get success rate (completed tournaments / total tournaments)
-            cur.execute("SELECT COUNT(*) as completed FROM tournaments WHERE status = 'completed'")
-            completed = cur.fetchone()['completed']
-            success_rate = (completed / total_tournaments * 100) if total_tournaments > 0 else 0
-            
-            cur.close()
-            conn.close()
-            
-            return jsonify({
-                "status": "success",
-                "data": {
-                    "tournaments": total_tournaments,
-                    "users": total_users,
-                    "volume": total_volume,
-                    "success_rate": success_rate
-                }
-            })
-        except Exception as e:
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
-    else:
-        # Fallback to sample stats
-        return jsonify({
-            "status": "success",
-            "data": {
-                "tournaments": 12,
-                "users": 1247,
-                "volume": 45678,
-                "success_rate": 94
-            },
-            "note": "Using sample data due to database connection issue"
-        })
-
-# Health check endpoint
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    # Check database connection
-    db_status = "connected" if get_db_connection() else "disconnected"
-    
-    return jsonify({
-        "status": "success",
-        "data": {
-            "api": "healthy",
-            "database": db_status,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    })
-
-# Esporta l'app per Vercel
-# Non utilizzare app.run() per il deploy su Vercel
