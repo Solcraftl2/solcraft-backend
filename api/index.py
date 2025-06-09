@@ -39,7 +39,7 @@ if supabase_url and supabase_key:
     except Exception as e:
         print(f"Supabase client initialization error: {str(e)}")
 
-# Database connection function with improved SSL handling
+# Database connection function with improved SSL handling and connection format
 def get_db_connection():
     try:
         # Prova prima con DATABASE_URL
@@ -52,18 +52,27 @@ def get_db_connection():
             print("No database connection string available")
             return None
         
-        # Assicurati che la stringa di connessione includa i parametri SSL
-        if '?' not in connection_string:
-            connection_string += "?sslmode=require"
-        elif 'sslmode=' not in connection_string:
-            connection_string += "&sslmode=require"
-            
-        print(f"Attempting to connect with: {connection_string[:20]}... (SSL enabled)")
+        # Modifica il prefisso da postgresql:// a postgres:// se necessario
+        if connection_string and connection_string.startswith('postgresql://'):
+            connection_string = 'postgres://' + connection_string[14:]
+            print("Modified connection string prefix from postgresql:// to postgres://")
         
-        # Parametri di connessione espliciti per SSL
+        # Modifica la modalità SSL a 'allow' se non già specificata
+        if '?' not in connection_string:
+            connection_string += "?sslmode=allow"
+        elif 'sslmode=' not in connection_string:
+            connection_string += "&sslmode=allow"
+        else:
+            # Sostituisci qualsiasi modalità SSL esistente con 'allow'
+            import re
+            connection_string = re.sub(r'sslmode=\w+', 'sslmode=allow', connection_string)
+            
+        print(f"Attempting to connect with: {connection_string[:20]}... (SSL mode: allow)")
+        
+        # Parametri di connessione espliciti con timeout aumentato
         conn = psycopg2.connect(
             connection_string,
-            connect_timeout=10,  # Timeout di connessione di 10 secondi
+            connect_timeout=30,  # Aumentato a 30 secondi
             application_name="solcraft-backend"  # Nome dell'applicazione per il monitoraggio
         )
         conn.autocommit = True
@@ -71,6 +80,22 @@ def get_db_connection():
         return conn
     except Exception as e:
         print(f"Database connection error: {str(e)}")
+        # Prova con connessione diretta se il pooler fallisce
+        try:
+            # Se stiamo usando il pooler e fallisce, prova con connessione diretta
+            if "pooler" in connection_string:
+                direct_conn_string = f"postgres://postgres:kCxBrdFOGbqEgtfs@db.zlainxopxrjgfphwjdvk.supabase.co:5432/postgres?sslmode=allow"
+                print(f"Attempting direct connection: {direct_conn_string[:20]}...")
+                conn = psycopg2.connect(
+                    direct_conn_string,
+                    connect_timeout=30,
+                    application_name="solcraft-backend-direct"
+                )
+                conn.autocommit = True
+                print("Direct database connection successful")
+                return conn
+        except Exception as direct_err:
+            print(f"Direct database connection error: {str(direct_err)}")
         return None
 
 # Initialize database tables if they don't exist
@@ -256,8 +281,7 @@ def debug_env():
             "SUPABASE_URL": supabase_url,
             "SUPABASE_KEY": supabase_key[:10] + "..." if supabase_key else None,
             "JWT_SECRET": JWT_SECRET[:5] + "..." if JWT_SECRET else None,
-            "SUPABASE_CLIENT_INITIALIZED": supabase_client is not None,
-            "SSL_ENABLED": "sslmode=require" in (DATABASE_URL or "") or "sslmode=require" in (POSTGRES_URL or "")
+            "SUPABASE_CLIENT_INITIALIZED": supabase_client is not None
         }
         
         # Tenta una connessione di test al database
@@ -524,17 +548,24 @@ def register_user():
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Check if username or email already exists
-            cur.execute("SELECT * FROM users WHERE username = %s OR email = %s", 
-                       (data['username'], data['email']))
-            existing_user = cur.fetchone()
-            
-            if existing_user:
+            # Check if username already exists
+            cur.execute("SELECT * FROM users WHERE username = %s", (data['username'],))
+            if cur.fetchone():
                 cur.close()
                 conn.close()
                 return jsonify({
                     "status": "error",
-                    "message": "Username or email already exists"
+                    "message": "Username already exists"
+                }), 400
+            
+            # Check if email already exists
+            cur.execute("SELECT * FROM users WHERE email = %s", (data['email'],))
+            if cur.fetchone():
+                cur.close()
+                conn.close()
+                return jsonify({
+                    "status": "error",
+                    "message": "Email already exists"
                 }), 400
             
             # Create user
@@ -547,7 +578,7 @@ def register_user():
                 data['username'],
                 data['email'],
                 password_hash,
-                data.get('wallet_address', None)
+                data.get('wallet_address')
             ))
             
             new_user = cur.fetchone()
@@ -582,19 +613,21 @@ def register_user():
 @app.route('/api/users/login', methods=['POST'])
 def login_user():
     data = request.json
+    required_fields = ['email', 'password']
     
-    if 'email' not in data or 'password' not in data:
-        return jsonify({
-            "status": "error",
-            "message": "Email and password are required"
-        }), 400
+    for field in required_fields:
+        if field not in data:
+            return jsonify({
+                "status": "error",
+                "message": f"Missing required field: {field}"
+            }), 400
     
     conn = get_db_connection()
     if conn:
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Find user by email
+            # Check if user exists
             cur.execute("SELECT * FROM users WHERE email = %s", (data['email'],))
             user = cur.fetchone()
             
@@ -606,7 +639,7 @@ def login_user():
                     "message": "Invalid email or password"
                 }), 401
             
-            # Verify password
+            # Check password
             password_hash = hash_password(data['password'])
             if password_hash != user['password_hash']:
                 cur.close()
@@ -619,9 +652,6 @@ def login_user():
             # Generate token
             token = generate_token(user['id'])
             
-            # Remove password hash from response
-            user.pop('password_hash', None)
-            
             cur.close()
             conn.close()
             
@@ -629,7 +659,13 @@ def login_user():
                 "status": "success",
                 "message": "Login successful",
                 "data": {
-                    "user": user,
+                    "user": {
+                        "id": user['id'],
+                        "username": user['username'],
+                        "email": user['email'],
+                        "wallet_address": user['wallet_address'],
+                        "created_at": user['created_at']
+                    },
                     "token": token
                 }
             })
@@ -644,3 +680,6 @@ def login_user():
             "status": "error",
             "message": "Database connection error"
         }), 500
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0')
