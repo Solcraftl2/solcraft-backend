@@ -26,16 +26,33 @@ SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
 # PostgreSQL Database Connection
 DATABASE_URL = os.environ.get('DATABASE_URL')
+POSTGRES_URL = os.environ.get('POSTGRES_URL')
 supabase_url = os.environ.get('SUPABASE_URL')
 supabase_key = os.environ.get('SUPABASE_KEY')
 
 # Initialize Supabase client
-supabase_client = supabase.create_client(supabase_url, supabase_key)
+supabase_client = None
+if supabase_url and supabase_key:
+    try:
+        supabase_client = supabase.create_client(supabase_url, supabase_key)
+    except Exception as e:
+        print(f"Supabase client initialization error: {str(e)}")
 
 # Database connection function
 def get_db_connection():
     try:
-        conn = psycopg2.connect(DATABASE_URL)
+        # Prova prima con DATABASE_URL
+        connection_string = DATABASE_URL
+        # Se DATABASE_URL non è disponibile, prova con POSTGRES_URL
+        if not connection_string:
+            connection_string = POSTGRES_URL
+            
+        if not connection_string:
+            print("No database connection string available")
+            return None
+            
+        print(f"Attempting to connect with: {connection_string[:20]}...")
+        conn = psycopg2.connect(connection_string)
         conn.autocommit = True
         return conn
     except Exception as e:
@@ -203,13 +220,54 @@ def api_info():
                 {"path": "/api/tournaments/:id", "methods": ["GET"], "description": "Get details of a specific tournament"},
                 {"path": "/api/users/register", "methods": ["POST"], "description": "Register a new user"},
                 {"path": "/api/users/login", "methods": ["POST"], "description": "Login a user"},
-                {"path": "/api/investments", "methods": ["POST"], "description": "Create a new investment"}
+                {"path": "/api/investments", "methods": ["POST"], "description": "Create a new investment"},
+                {"path": "/api/debug/env", "methods": ["GET"], "description": "Debug endpoint for environment variables"}
             ]
         })
     except Exception as e:
         return jsonify({
             "status": "error",
             "message": "Error in API info endpoint",
+            "error": str(e)
+        }), 500
+
+# Endpoint di debug per le variabili d'ambiente
+@app.route('/api/debug/env', methods=['GET'])
+def debug_env():
+    try:
+        # Raccogli le variabili d'ambiente rilevanti (oscurando parti sensibili)
+        env_vars = {
+            "DATABASE_URL": DATABASE_URL[:20] + "..." if DATABASE_URL else None,
+            "POSTGRES_URL": POSTGRES_URL[:20] + "..." if POSTGRES_URL else None,
+            "SUPABASE_URL": supabase_url,
+            "SUPABASE_KEY": supabase_key[:10] + "..." if supabase_key else None,
+            "JWT_SECRET": JWT_SECRET[:5] + "..." if JWT_SECRET else None,
+            "SUPABASE_CLIENT_INITIALIZED": supabase_client is not None
+        }
+        
+        # Tenta una connessione di test al database
+        conn = get_db_connection()
+        db_connection_success = conn is not None
+        if conn:
+            conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "environment_variables": env_vars,
+            "database_connection_test": {
+                "success": db_connection_success,
+                "message": "Database connection successful" if db_connection_success else "Database connection failed"
+            },
+            "server_info": {
+                "python_version": os.environ.get("PYTHON_VERSION", "Unknown"),
+                "vercel_region": os.environ.get("VERCEL_REGION", "Unknown"),
+                "vercel_env": os.environ.get("VERCEL_ENV", "Unknown")
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": "Error in debug endpoint",
             "error": str(e)
         }), 500
 
