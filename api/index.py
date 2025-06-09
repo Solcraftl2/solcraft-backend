@@ -35,10 +35,11 @@ supabase_client = None
 if supabase_url and supabase_key:
     try:
         supabase_client = supabase.create_client(supabase_url, supabase_key)
+        print(f"Supabase client initialized successfully with URL: {supabase_url}")
     except Exception as e:
         print(f"Supabase client initialization error: {str(e)}")
 
-# Database connection function
+# Database connection function with improved SSL handling
 def get_db_connection():
     try:
         # Prova prima con DATABASE_URL
@@ -50,10 +51,23 @@ def get_db_connection():
         if not connection_string:
             print("No database connection string available")
             return None
+        
+        # Assicurati che la stringa di connessione includa i parametri SSL
+        if '?' not in connection_string:
+            connection_string += "?sslmode=require"
+        elif 'sslmode=' not in connection_string:
+            connection_string += "&sslmode=require"
             
-        print(f"Attempting to connect with: {connection_string[:20]}...")
-        conn = psycopg2.connect(connection_string)
+        print(f"Attempting to connect with: {connection_string[:20]}... (SSL enabled)")
+        
+        # Parametri di connessione espliciti per SSL
+        conn = psycopg2.connect(
+            connection_string,
+            connect_timeout=10,  # Timeout di connessione di 10 secondi
+            application_name="solcraft-backend"  # Nome dell'applicazione per il monitoraggio
+        )
         conn.autocommit = True
+        print("Database connection successful")
         return conn
     except Exception as e:
         print(f"Database connection error: {str(e)}")
@@ -242,21 +256,34 @@ def debug_env():
             "SUPABASE_URL": supabase_url,
             "SUPABASE_KEY": supabase_key[:10] + "..." if supabase_key else None,
             "JWT_SECRET": JWT_SECRET[:5] + "..." if JWT_SECRET else None,
-            "SUPABASE_CLIENT_INITIALIZED": supabase_client is not None
+            "SUPABASE_CLIENT_INITIALIZED": supabase_client is not None,
+            "SSL_ENABLED": "sslmode=require" in (DATABASE_URL or "") or "sslmode=require" in (POSTGRES_URL or "")
         }
         
         # Tenta una connessione di test al database
         conn = get_db_connection()
         db_connection_success = conn is not None
+        db_connection_message = "Database connection successful"
+        
         if conn:
-            conn.close()
+            try:
+                # Verifica che la connessione funzioni eseguendo una query semplice
+                cur = conn.cursor()
+                cur.execute("SELECT 1")
+                cur.close()
+            except Exception as e:
+                db_connection_message = f"Database connection established but query failed: {str(e)}"
+            finally:
+                conn.close()
+        else:
+            db_connection_message = "Database connection failed"
         
         return jsonify({
             "status": "success",
             "environment_variables": env_vars,
             "database_connection_test": {
                 "success": db_connection_success,
-                "message": "Database connection successful" if db_connection_success else "Database connection failed"
+                "message": db_connection_message
             },
             "server_info": {
                 "python_version": os.environ.get("PYTHON_VERSION", "Unknown"),
