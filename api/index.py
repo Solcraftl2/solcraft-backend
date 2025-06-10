@@ -7,17 +7,20 @@ import jwt
 import hashlib
 import smtplib
 import psycopg2
-from psycopg2.extras import RealDictCursor, DictCursor
+from psycopg2.extras import RealDictCursor, DictCursor, register_uuid
+import uuid
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import supabase
 import traceback
 import logging
-import uuid
 
 # Configurazione logging avanzato
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('solcraft-backend')
+
+# Registra l'adattatore UUID per psycopg2
+register_uuid()
 
 # Aggiornamento per trigger deploy con supporto PostgreSQL su Supabase
 
@@ -57,9 +60,34 @@ if supabase_url and supabase_key:
 
 # Helper function to convert UUID to string if needed
 def safe_uuid(value):
+    """
+    Converte un UUID in stringa se necessario.
+    Ritorna il valore originale se non è un UUID.
+    """
     if isinstance(value, uuid.UUID):
         return str(value)
     return value
+
+# Helper function to ensure UUID is valid
+def ensure_valid_uuid(value):
+    """
+    Assicura che il valore sia un UUID valido.
+    Se è una stringa, tenta di convertirla in UUID.
+    Se è già un UUID, lo ritorna come stringa.
+    Se non è valido, solleva ValueError.
+    """
+    if value is None:
+        return None
+        
+    if isinstance(value, uuid.UUID):
+        return str(value)
+        
+    try:
+        # Tenta di convertire in UUID per validare, poi ritorna come stringa
+        return str(uuid.UUID(value))
+    except (ValueError, TypeError, AttributeError):
+        logger.error(f"UUID non valido: {value} (tipo: {type(value)})")
+        raise ValueError(f"Invalid UUID format: {value}")
 
 # Database connection function with improved SSL handling, connection format, and direct connection
 def get_db_connection():
@@ -651,11 +679,11 @@ def get_tournaments():
                 tournaments_list = []
                 for tournament in tournaments:
                     # Converti UUID a stringa per JSON
-                    if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
-                        tournament['id'] = str(tournament['id'])
-                    if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
-                        tournament['organizer_id'] = str(tournament['organizer_id'])
-                    tournaments_list.append(dict(tournament))
+                    tournament_dict = dict(tournament)
+                    for key, value in tournament_dict.items():
+                        if isinstance(value, uuid.UUID):
+                            tournament_dict[key] = str(value)
+                    tournaments_list.append(tournament_dict)
                 
                 return jsonify({
                     "status": "success",
@@ -696,10 +724,10 @@ def get_tournament(tournament_id):
                 
                 # Verifica se l'ID è un UUID valido
                 try:
-                    # Tenta di convertire l'ID in UUID
-                    tournament_uuid = uuid.UUID(tournament_id)
+                    # Tenta di convertire l'ID in UUID per validazione
+                    tournament_uuid = str(uuid.UUID(tournament_id))
                     # Se la conversione ha successo, usa l'UUID nella query
-                    cur.execute("SELECT * FROM tournaments WHERE id = %s", (str(tournament_uuid),))
+                    cur.execute("SELECT * FROM tournaments WHERE id::text = %s", (tournament_uuid,))
                 except ValueError:
                     # Se non è un UUID valido, prova come stringa
                     cur.execute("SELECT * FROM tournaments WHERE id::text = %s", (tournament_id,))
@@ -710,14 +738,14 @@ def get_tournament(tournament_id):
                 
                 if tournament:
                     # Converti UUID a stringa per JSON
-                    if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
-                        tournament['id'] = str(tournament['id'])
-                    if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
-                        tournament['organizer_id'] = str(tournament['organizer_id'])
+                    tournament_dict = dict(tournament)
+                    for key, value in tournament_dict.items():
+                        if isinstance(value, uuid.UUID):
+                            tournament_dict[key] = str(value)
                     
                     return jsonify({
                         "status": "success",
-                        "data": dict(tournament)
+                        "data": tournament_dict
                     })
                 else:
                     # Fallback ai dati di esempio se il torneo non è trovato
@@ -793,6 +821,7 @@ def create_tournament():
                 
                 # Genera un nuovo UUID per il torneo
                 tournament_id = str(uuid.uuid4())
+                logger.info(f"Nuovo UUID torneo generato: {tournament_id}")
                 
                 # Adatta i nomi delle colonne alla struttura reale del database
                 # Converti organizer_id in stringa se presente
@@ -800,11 +829,16 @@ def create_tournament():
                 if data.get('organizer_id'):
                     try:
                         organizer_id = str(uuid.UUID(data.get('organizer_id')))
+                        logger.info(f"UUID organizer_id validato: {organizer_id}")
                     except ValueError:
+                        logger.error(f"UUID organizer_id non valido: {data.get('organizer_id')}")
                         return jsonify({
                             "status": "error",
                             "message": "Invalid organizer_id format"
                         }), 400
+                
+                # Log dei parametri prima dell'esecuzione della query
+                logger.info(f"Parametri query INSERT tournaments: id={tournament_id}, name={data['name']}, organizer_id={organizer_id}")
                 
                 cur.execute("""
                     INSERT INTO tournaments (id, name, buy_in, total_prize, start_date, status, organizer_id)
@@ -825,15 +859,15 @@ def create_tournament():
                 conn.close()
                 
                 # Converti UUID a stringa per JSON
-                if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
-                    tournament['id'] = str(tournament['id'])
-                if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
-                    tournament['organizer_id'] = str(tournament['organizer_id'])
+                tournament_dict = dict(tournament)
+                for key, value in tournament_dict.items():
+                    if isinstance(value, uuid.UUID):
+                        tournament_dict[key] = str(value)
                 
                 return jsonify({
                     "status": "success",
                     "message": "Tournament created successfully",
-                    "data": dict(tournament)
+                    "data": tournament_dict
                 }), 201
             except Exception as e:
                 logger.error(f"Errore creazione tournament: {str(e)}")
@@ -889,11 +923,15 @@ def register_user():
                 
                 # Genera un nuovo UUID per l'utente
                 user_id = str(uuid.uuid4())
+                logger.info(f"Nuovo UUID utente generato: {user_id}")
                 
                 # Hash della password
                 password_hash = hash_password(data['password'])
                 
                 # Inserisci il nuovo utente
+                # Log dei parametri prima dell'esecuzione della query
+                logger.info(f"Parametri query INSERT users: id={user_id}, username={data['username']}, email={data['email']}")
+                
                 cur.execute("""
                     INSERT INTO users (id, username, email, password_hash, wallet_address, created_at, is_active, is_verified)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -914,17 +952,19 @@ def register_user():
                 conn.close()
                 
                 # Converti UUID a stringa per JSON
-                if 'id' in user and isinstance(user['id'], uuid.UUID):
-                    user['id'] = str(user['id'])
+                user_dict = dict(user)
+                for key, value in user_dict.items():
+                    if isinstance(value, uuid.UUID):
+                        user_dict[key] = str(value)
                 
                 # Genera token JWT
-                token = generate_token(str(user['id']))
+                token = generate_token(user_dict['id'])
                 
                 return jsonify({
                     "status": "success",
                     "message": "User registered successfully",
                     "data": {
-                        "user": dict(user),
+                        "user": user_dict,
                         "token": token
                     }
                 }), 201
@@ -981,25 +1021,26 @@ def login_user():
                         "message": "Invalid email or password"
                     }), 401
                 
+                # Converti UUID a stringa per JSON e per l'aggiornamento
+                user_dict = dict(user)
+                for key, value in user_dict.items():
+                    if isinstance(value, uuid.UUID):
+                        user_dict[key] = str(value)
+                
                 # Aggiorna last_login
-                user_id = str(user['id']) if isinstance(user['id'], uuid.UUID) else user['id']
-                cur.execute("UPDATE users SET last_login = %s WHERE id = %s", (datetime.now(), user_id))
+                cur.execute("UPDATE users SET last_login = %s WHERE id::text = %s", (datetime.now(), user_dict['id']))
                 
                 cur.close()
                 conn.close()
                 
-                # Converti UUID a stringa per JSON
-                if 'id' in user and isinstance(user['id'], uuid.UUID):
-                    user['id'] = str(user['id'])
-                
                 # Genera token JWT
-                token = generate_token(str(user['id']))
+                token = generate_token(user_dict['id'])
                 
                 return jsonify({
                     "status": "success",
                     "message": "Login successful",
                     "data": {
-                        "user": dict(user),
+                        "user": user_dict,
                         "token": token
                     }
                 })
@@ -1045,28 +1086,31 @@ def create_investment():
                 
                 # Genera un nuovo UUID per l'investimento
                 investment_id = str(uuid.uuid4())
+                logger.info(f"Nuovo UUID investimento generato: {investment_id}")
                 
-                # Converti gli ID in stringhe se sono UUID
-                user_id = data['user_id']
-                tournament_id = data['tournament_id']
+                # Converti gli ID in stringhe UUID valide
+                try:
+                    user_id = str(uuid.UUID(data['user_id']))
+                    logger.info(f"UUID user_id validato: {user_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"UUID user_id non valido: {data['user_id']}")
+                    return jsonify({
+                        "status": "error",
+                        "message": "Invalid user_id format"
+                    }), 400
                 
-                if isinstance(user_id, str):
-                    try:
-                        user_id = str(uuid.UUID(user_id))
-                    except ValueError:
-                        return jsonify({
-                            "status": "error",
-                            "message": "Invalid user_id format"
-                        }), 400
+                try:
+                    tournament_id = str(uuid.UUID(data['tournament_id']))
+                    logger.info(f"UUID tournament_id validato: {tournament_id}")
+                except (ValueError, TypeError):
+                    logger.error(f"UUID tournament_id non valido: {data['tournament_id']}")
+                    return jsonify({
+                        "status": "error",
+                        "message": "Invalid tournament_id format"
+                    }), 400
                 
-                if isinstance(tournament_id, str):
-                    try:
-                        tournament_id = str(uuid.UUID(tournament_id))
-                    except ValueError:
-                        return jsonify({
-                            "status": "error",
-                            "message": "Invalid tournament_id format"
-                        }), 400
+                # Log dei parametri prima dell'esecuzione della query
+                logger.info(f"Parametri query INSERT investments: id={investment_id}, user_id={user_id}, tournament_id={tournament_id}")
                 
                 # Inserisci il nuovo investimento
                 cur.execute("""
@@ -1087,17 +1131,15 @@ def create_investment():
                 conn.close()
                 
                 # Converti UUID a stringa per JSON
-                if 'id' in investment and isinstance(investment['id'], uuid.UUID):
-                    investment['id'] = str(investment['id'])
-                if 'user_id' in investment and isinstance(investment['user_id'], uuid.UUID):
-                    investment['user_id'] = str(investment['user_id'])
-                if 'tournament_id' in investment and isinstance(investment['tournament_id'], uuid.UUID):
-                    investment['tournament_id'] = str(investment['tournament_id'])
+                investment_dict = dict(investment)
+                for key, value in investment_dict.items():
+                    if isinstance(value, uuid.UUID):
+                        investment_dict[key] = str(value)
                 
                 return jsonify({
                     "status": "success",
                     "message": "Investment created successfully",
-                    "data": dict(investment)
+                    "data": investment_dict
                 }), 201
             except Exception as e:
                 logger.error(f"Errore creazione investment: {str(e)}")
