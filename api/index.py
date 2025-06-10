@@ -176,6 +176,7 @@ sample_tournaments = [
         "buy_in": 215,
         "total_prize": 1000000,
         "start_date": "2023-06-04T18:00:00Z",
+        "end_date": "2023-06-04T23:00:00Z",
         "status": "completed"
     },
     {
@@ -185,6 +186,7 @@ sample_tournaments = [
         "buy_in": 1050,
         "total_prize": 500000,
         "start_date": "2023-06-11T20:00:00Z",
+        "end_date": "2023-06-11T23:59:00Z",
         "status": "upcoming"
     }
 ]
@@ -837,12 +839,27 @@ def create_tournament():
                             "message": "Invalid organizer_id format"
                         }), 400
                 
+                # Gestione del campo end_date obbligatorio
+                end_date = data.get('end_date')
+                if not end_date:
+                    # Se non fornito, imposta end_date a start_date + 3 ore
+                    try:
+                        start_date = datetime.fromisoformat(data['start_date'].replace('Z', '+00:00'))
+                        end_date = (start_date + timedelta(hours=3)).isoformat()
+                        logger.info(f"End date generata automaticamente: {end_date}")
+                    except (ValueError, TypeError):
+                        logger.error(f"Formato data non valido: {data['start_date']}")
+                        return jsonify({
+                            "status": "error",
+                            "message": "Invalid start_date format"
+                        }), 400
+                
                 # Log dei parametri prima dell'esecuzione della query
-                logger.info(f"Parametri query INSERT tournaments: id={tournament_id}, name={data['name']}, organizer_id={organizer_id}")
+                logger.info(f"Parametri query INSERT tournaments: id={tournament_id}, name={data['name']}, organizer_id={organizer_id}, end_date={end_date}")
                 
                 cur.execute("""
-                    INSERT INTO tournaments (id, name, buy_in, total_prize, start_date, status, organizer_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO tournaments (id, name, buy_in, total_prize, start_date, end_date, status, organizer_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING *
                 """, (
                     tournament_id,
@@ -850,6 +867,7 @@ def create_tournament():
                     data['buy_in'],
                     data['total_prize'],
                     data['start_date'],
+                    end_date,
                     data.get('status', 'upcoming'),
                     organizer_id
                 ))
