@@ -55,6 +55,12 @@ if supabase_url and supabase_key:
         logger.error(f"Errore inizializzazione Supabase client: {str(e)}")
         logger.error(traceback.format_exc())
 
+# Helper function to convert UUID to string if needed
+def safe_uuid(value):
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    return value
+
 # Database connection function with improved SSL handling, connection format, and direct connection
 def get_db_connection():
     # Logging dettagliato di ogni tentativo di connessione
@@ -693,7 +699,7 @@ def get_tournament(tournament_id):
                     # Tenta di convertire l'ID in UUID
                     tournament_uuid = uuid.UUID(tournament_id)
                     # Se la conversione ha successo, usa l'UUID nella query
-                    cur.execute("SELECT * FROM tournaments WHERE id = %s", (tournament_uuid,))
+                    cur.execute("SELECT * FROM tournaments WHERE id = %s", (str(tournament_uuid),))
                 except ValueError:
                     # Se non è un UUID valido, prova come stringa
                     cur.execute("SELECT * FROM tournaments WHERE id::text = %s", (tournament_id,))
@@ -786,9 +792,20 @@ def create_tournament():
                 cur = conn.cursor(cursor_factory=RealDictCursor)
                 
                 # Genera un nuovo UUID per il torneo
-                tournament_id = uuid.uuid4()
+                tournament_id = str(uuid.uuid4())
                 
                 # Adatta i nomi delle colonne alla struttura reale del database
+                # Converti organizer_id in stringa se presente
+                organizer_id = None
+                if data.get('organizer_id'):
+                    try:
+                        organizer_id = str(uuid.UUID(data.get('organizer_id')))
+                    except ValueError:
+                        return jsonify({
+                            "status": "error",
+                            "message": "Invalid organizer_id format"
+                        }), 400
+                
                 cur.execute("""
                     INSERT INTO tournaments (id, name, buy_in, total_prize, start_date, status, organizer_id)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -800,7 +817,7 @@ def create_tournament():
                     data['total_prize'],
                     data['start_date'],
                     data.get('status', 'upcoming'),
-                    uuid.UUID(data.get('organizer_id')) if data.get('organizer_id') else None
+                    organizer_id
                 ))
                 
                 tournament = cur.fetchone()
@@ -871,7 +888,7 @@ def register_user():
                     }), 409
                 
                 # Genera un nuovo UUID per l'utente
-                user_id = uuid.uuid4()
+                user_id = str(uuid.uuid4())
                 
                 # Hash della password
                 password_hash = hash_password(data['password'])
@@ -965,7 +982,8 @@ def login_user():
                     }), 401
                 
                 # Aggiorna last_login
-                cur.execute("UPDATE users SET last_login = %s WHERE id = %s", (datetime.now(), user['id']))
+                user_id = str(user['id']) if isinstance(user['id'], uuid.UUID) else user['id']
+                cur.execute("UPDATE users SET last_login = %s WHERE id = %s", (datetime.now(), user_id))
                 
                 cur.close()
                 conn.close()
@@ -1026,15 +1044,15 @@ def create_investment():
                 cur = conn.cursor(cursor_factory=RealDictCursor)
                 
                 # Genera un nuovo UUID per l'investimento
-                investment_id = uuid.uuid4()
+                investment_id = str(uuid.uuid4())
                 
-                # Converti gli ID in UUID se sono stringhe
+                # Converti gli ID in stringhe se sono UUID
                 user_id = data['user_id']
                 tournament_id = data['tournament_id']
                 
                 if isinstance(user_id, str):
                     try:
-                        user_id = uuid.UUID(user_id)
+                        user_id = str(uuid.UUID(user_id))
                     except ValueError:
                         return jsonify({
                             "status": "error",
@@ -1043,7 +1061,7 @@ def create_investment():
                 
                 if isinstance(tournament_id, str):
                     try:
-                        tournament_id = uuid.UUID(tournament_id)
+                        tournament_id = str(uuid.UUID(tournament_id))
                     except ValueError:
                         return jsonify({
                             "status": "error",
