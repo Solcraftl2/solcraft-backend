@@ -7,12 +7,13 @@ import jwt
 import hashlib
 import smtplib
 import psycopg2
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import RealDictCursor, DictCursor
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import supabase
 import traceback
 import logging
+import uuid
 
 # Configurazione logging avanzato
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -132,97 +133,23 @@ def get_db_connection():
             logger.error(traceback.format_exc())
         return None
 
-# Initialize database tables if they don't exist
-def initialize_database():
-    logger.info("Inizializzazione database...")
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor()
-            
-            # Create users table
-            cur.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    username VARCHAR(100) UNIQUE NOT NULL,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    wallet_address VARCHAR(255),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create tournaments table
-            cur.execute('''
-                CREATE TABLE IF NOT EXISTS tournaments (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    organizer VARCHAR(100) NOT NULL,
-                    buy_in NUMERIC NOT NULL,
-                    prize_pool NUMERIC NOT NULL,
-                    start_date TIMESTAMP NOT NULL,
-                    end_date TIMESTAMP,
-                    status VARCHAR(50) DEFAULT 'upcoming',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create investments table
-            cur.execute('''
-                CREATE TABLE IF NOT EXISTS investments (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id),
-                    tournament_id INTEGER REFERENCES tournaments(id),
-                    amount NUMERIC NOT NULL,
-                    share_percentage NUMERIC NOT NULL,
-                    status VARCHAR(50) DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            # Create organizers table
-            cur.execute('''
-                CREATE TABLE IF NOT EXISTS organizers (
-                    id SERIAL PRIMARY KEY,
-                    name VARCHAR(255) NOT NULL,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    wallet_address VARCHAR(255),
-                    verified BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            
-            cur.close()
-            logger.info("Database inizializzato con successo")
-        except Exception as e:
-            logger.error(f"Errore inizializzazione database: {str(e)}")
-            logger.error(traceback.format_exc())
-        finally:
-            conn.close()
-    else:
-        logger.error("Impossibile inizializzare il database: connessione fallita")
-
-# Initialize database on startup
-logger.info("Avvio inizializzazione database...")
-initialize_database()
-
 # Sample data for testing
 sample_tournaments = [
     {
-        "id": 1,
+        "id": "1",
         "name": "Sunday Million",
-        "organizer": "PokerPro",
+        "organizer_id": "1",
         "buy_in": 215,
-        "prize_pool": 1000000,
+        "total_prize": 1000000,
         "start_date": "2023-06-04T18:00:00Z",
         "status": "completed"
     },
     {
-        "id": 2,
+        "id": "2",
         "name": "High Roller",
-        "organizer": "CryptoPoker",
+        "organizer_id": "2",
         "buy_in": 1050,
-        "prize_pool": 500000,
+        "total_prize": 500000,
         "start_date": "2023-06-11T20:00:00Z",
         "status": "upcoming"
     }
@@ -272,11 +199,99 @@ def send_email(to, subject, body):
 def home():
     try:
         # Risposta semplificata per l'endpoint radice per evitare errori in ambiente serverless
-        return jsonify({
-            "status": "success",
-            "message": "SolCraft API is running",
-            "version": "1.0.0"
-        })
+        return """
+        <!DOCTYPE html>
+        <html lang="it">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SolCraft L2 API</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    line-height: 1.6;
+                    max-width: 800px;
+                    margin: 0 auto;
+                    padding: 20px;
+                    color: #333;
+                }
+                h1 {
+                    color: #2c3e50;
+                    border-bottom: 2px solid #3498db;
+                    padding-bottom: 10px;
+                }
+                h2 {
+                    color: #2980b9;
+                }
+                code {
+                    background-color: #f8f8f8;
+                    padding: 2px 5px;
+                    border-radius: 3px;
+                    font-family: monospace;
+                }
+                .endpoint {
+                    margin-bottom: 20px;
+                    padding: 15px;
+                    background-color: #f9f9f9;
+                    border-left: 4px solid #3498db;
+                }
+                .method {
+                    font-weight: bold;
+                    color: #e74c3c;
+                }
+            </style>
+        </head>
+        <body>
+            <h1>SolCraft L2 API</h1>
+            <p>Benvenuto nell'API di SolCraft L2. Questa API fornisce accesso ai dati e alle funzionalità della piattaforma SolCraft L2.</p>
+            
+            <h2>Endpoint disponibili</h2>
+            
+            <div class="endpoint">
+                <p><span class="method">GET</span> <code>/api</code></p>
+                <p>Informazioni generali sull'API e lista degli endpoint disponibili.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">GET</span> <code>/api/tournaments</code></p>
+                <p>Ottieni la lista di tutti i tornei disponibili.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">POST</span> <code>/api/tournaments</code></p>
+                <p>Crea un nuovo torneo.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">GET</span> <code>/api/tournaments/:id</code></p>
+                <p>Ottieni i dettagli di un torneo specifico.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">POST</span> <code>/api/users/register</code></p>
+                <p>Registra un nuovo utente.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">POST</span> <code>/api/users/login</code></p>
+                <p>Effettua il login di un utente.</p>
+            </div>
+            
+            <div class="endpoint">
+                <p><span class="method">POST</span> <code>/api/investments</code></p>
+                <p>Crea un nuovo investimento.</p>
+            </div>
+            
+            <h2>Stato API</h2>
+            <p>Versione: 1.0.0</p>
+            <p>Stato: Attiva</p>
+            
+            <footer>
+                <p>Per ulteriori informazioni, consulta la <a href="/api">documentazione completa</a>.</p>
+            </footer>
+        </body>
+        </html>
+        """
     except Exception as e:
         # Gestione esplicita delle eccezioni per l'endpoint radice
         logger.error(f"Errore endpoint radice: {str(e)}")
@@ -398,30 +413,28 @@ def debug_connection():
         
         # Test 1: Connessione diretta hardcoded con SSL disabilitato
         try:
+            start_time = datetime.now()
             direct_conn_string = "postgres://postgres:kCxBrdFOGbqEgtfs@db.zlainxopxrjgfphwjdvk.supabase.co:5432/postgres?sslmode=disable"
-            start_time = datetime.now()
-            conn = psycopg2.connect(
-                direct_conn_string,
-                connect_timeout=30,
-                application_name="solcraft-test-direct-disable"
-            )
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
+            conn = psycopg2.connect(direct_conn_string, connect_timeout=30)
+            conn.autocommit = True
             
-            # Test query
+            # Verifica che la connessione funzioni
             cur = conn.cursor()
             cur.execute("SELECT current_database(), current_user, version()")
             db_info = cur.fetchone()
             cur.close()
             conn.close()
             
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
             results.append({
                 "type": "direct_hardcoded_ssl_disable",
                 "success": True,
-                "duration_seconds": duration,
                 "database": db_info[0],
                 "user": db_info[1],
-                "version": db_info[2]
+                "version": db_info[2],
+                "duration_seconds": duration
             })
         except Exception as e:
             results.append({
@@ -430,66 +443,43 @@ def debug_connection():
                 "error": str(e)
             })
         
-        # Test 2: Connessione diretta hardcoded con SSL allow
-        try:
-            direct_conn_string = "postgres://postgres:kCxBrdFOGbqEgtfs@db.zlainxopxrjgfphwjdvk.supabase.co:5432/postgres?sslmode=allow"
-            start_time = datetime.now()
-            conn = psycopg2.connect(
-                direct_conn_string,
-                connect_timeout=30,
-                application_name="solcraft-test-direct-allow"
-            )
-            end_time = datetime.now()
-            duration = (end_time - start_time).total_seconds()
-            
-            # Test query
-            cur = conn.cursor()
-            cur.execute("SELECT current_database(), current_user, version()")
-            db_info = cur.fetchone()
-            cur.close()
-            conn.close()
-            
-            results.append({
-                "type": "direct_hardcoded_ssl_allow",
-                "success": True,
-                "duration_seconds": duration,
-                "database": db_info[0],
-                "user": db_info[1],
-                "version": db_info[2]
-            })
-        except Exception as e:
-            results.append({
-                "type": "direct_hardcoded_ssl_allow",
-                "success": False,
-                "error": str(e)
-            })
-        
-        # Test 3: Connessione con POSTGRES_URL_NON_POOLING
+        # Test 2: Connessione con POSTGRES_URL_NON_POOLING
         if POSTGRES_URL_NON_POOLING:
             try:
                 start_time = datetime.now()
-                conn = psycopg2.connect(
-                    POSTGRES_URL_NON_POOLING,
-                    connect_timeout=30,
-                    application_name="solcraft-test-non-pooling"
-                )
-                end_time = datetime.now()
-                duration = (end_time - start_time).total_seconds()
+                conn_string = POSTGRES_URL_NON_POOLING
+                if conn_string.startswith('postgresql://'):
+                    conn_string = 'postgres://' + conn_string[14:]
                 
-                # Test query
+                # Assicurati che SSL sia disabilitato
+                if '?' not in conn_string:
+                    conn_string += "?sslmode=disable"
+                elif 'sslmode=' not in conn_string:
+                    conn_string += "&sslmode=disable"
+                else:
+                    import re
+                    conn_string = re.sub(r'sslmode=\w+', 'sslmode=disable', conn_string)
+                
+                conn = psycopg2.connect(conn_string, connect_timeout=30)
+                conn.autocommit = True
+                
+                # Verifica che la connessione funzioni
                 cur = conn.cursor()
                 cur.execute("SELECT current_database(), current_user, version()")
                 db_info = cur.fetchone()
                 cur.close()
                 conn.close()
                 
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
                 results.append({
                     "type": "postgres_url_non_pooling",
                     "success": True,
-                    "duration_seconds": duration,
                     "database": db_info[0],
                     "user": db_info[1],
-                    "version": db_info[2]
+                    "version": db_info[2],
+                    "duration_seconds": duration
                 })
             except Exception as e:
                 results.append({
@@ -498,66 +488,88 @@ def debug_connection():
                     "error": str(e)
                 })
         
-        # Test 4: Connessione con POSTGRES_URL
+        # Test 3: Connessione con POSTGRES_URL (pooler)
         if POSTGRES_URL:
             try:
                 start_time = datetime.now()
-                conn = psycopg2.connect(
-                    POSTGRES_URL,
-                    connect_timeout=30,
-                    application_name="solcraft-test-pooling"
-                )
-                end_time = datetime.now()
-                duration = (end_time - start_time).total_seconds()
+                conn_string = POSTGRES_URL
+                if conn_string.startswith('postgresql://'):
+                    conn_string = 'postgres://' + conn_string[14:]
                 
-                # Test query
+                # Assicurati che SSL sia disabilitato
+                if '?' not in conn_string:
+                    conn_string += "?sslmode=disable"
+                elif 'sslmode=' not in conn_string:
+                    conn_string += "&sslmode=disable"
+                else:
+                    import re
+                    conn_string = re.sub(r'sslmode=\w+', 'sslmode=disable', conn_string)
+                
+                conn = psycopg2.connect(conn_string, connect_timeout=30)
+                conn.autocommit = True
+                
+                # Verifica che la connessione funzioni
                 cur = conn.cursor()
                 cur.execute("SELECT current_database(), current_user, version()")
                 db_info = cur.fetchone()
                 cur.close()
                 conn.close()
                 
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
                 results.append({
-                    "type": "postgres_url_pooling",
+                    "type": "postgres_url_pooler",
                     "success": True,
-                    "duration_seconds": duration,
                     "database": db_info[0],
                     "user": db_info[1],
-                    "version": db_info[2]
+                    "version": db_info[2],
+                    "duration_seconds": duration
                 })
             except Exception as e:
                 results.append({
-                    "type": "postgres_url_pooling",
+                    "type": "postgres_url_pooler",
                     "success": False,
                     "error": str(e)
                 })
         
-        # Test 5: Connessione con DATABASE_URL
+        # Test 4: Connessione con DATABASE_URL
         if DATABASE_URL:
             try:
                 start_time = datetime.now()
-                conn = psycopg2.connect(
-                    DATABASE_URL,
-                    connect_timeout=30,
-                    application_name="solcraft-test-database-url"
-                )
-                end_time = datetime.now()
-                duration = (end_time - start_time).total_seconds()
+                conn_string = DATABASE_URL
+                if conn_string.startswith('postgresql://'):
+                    conn_string = 'postgres://' + conn_string[14:]
                 
-                # Test query
+                # Assicurati che SSL sia disabilitato
+                if '?' not in conn_string:
+                    conn_string += "?sslmode=disable"
+                elif 'sslmode=' not in conn_string:
+                    conn_string += "&sslmode=disable"
+                else:
+                    import re
+                    conn_string = re.sub(r'sslmode=\w+', 'sslmode=disable', conn_string)
+                
+                conn = psycopg2.connect(conn_string, connect_timeout=30)
+                conn.autocommit = True
+                
+                # Verifica che la connessione funzioni
                 cur = conn.cursor()
                 cur.execute("SELECT current_database(), current_user, version()")
                 db_info = cur.fetchone()
                 cur.close()
                 conn.close()
                 
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
                 results.append({
                     "type": "database_url",
                     "success": True,
-                    "duration_seconds": duration,
                     "database": db_info[0],
                     "user": db_info[1],
-                    "version": db_info[2]
+                    "version": db_info[2],
+                    "duration_seconds": duration
                 })
             except Exception as e:
                 results.append({
@@ -566,14 +578,46 @@ def debug_connection():
                     "error": str(e)
                 })
         
+        # Test 5: Connessione con get_db_connection
+        try:
+            start_time = datetime.now()
+            conn = get_db_connection()
+            
+            if conn:
+                # Verifica che la connessione funzioni
+                cur = conn.cursor()
+                cur.execute("SELECT current_database(), current_user, version()")
+                db_info = cur.fetchone()
+                cur.close()
+                conn.close()
+                
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+                
+                results.append({
+                    "type": "get_db_connection",
+                    "success": True,
+                    "database": db_info[0],
+                    "user": db_info[1],
+                    "version": db_info[2],
+                    "duration_seconds": duration
+                })
+            else:
+                results.append({
+                    "type": "get_db_connection",
+                    "success": False,
+                    "error": "Connection failed"
+                })
+        except Exception as e:
+            results.append({
+                "type": "get_db_connection",
+                "success": False,
+                "error": str(e)
+            })
+        
         return jsonify({
             "status": "success",
-            "timestamp": datetime.now().isoformat(),
-            "connection_tests": results,
-            "environment": {
-                "vercel_region": os.environ.get("VERCEL_REGION", "Unknown"),
-                "vercel_env": os.environ.get("VERCEL_ENV", "Unknown")
-            }
+            "connection_tests": results
         })
     except Exception as e:
         logger.error(f"Errore endpoint debug connection: {str(e)}")
@@ -587,403 +631,476 @@ def debug_connection():
 
 @app.route('/api/tournaments', methods=['GET'])
 def get_tournaments():
-    logger.info("Richiesta GET /api/tournaments")
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SELECT * FROM tournaments ORDER BY start_date DESC")
-            tournaments = cur.fetchall()
-            cur.close()
-            conn.close()
-            logger.info(f"GET /api/tournaments: restituiti {len(tournaments)} tornei dal database")
-            return jsonify({
-                "status": "success",
-                "data": tournaments
-            })
-        except Exception as e:
-            logger.error(f"Errore GET /api/tournaments: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
-    else:
-        # Fallback to sample data if database connection fails
-        logger.warning("GET /api/tournaments: connessione al database fallita, utilizzo dati di esempio")
-        return jsonify({
-            "status": "success",
-            "data": sample_tournaments,
-            "note": "Using sample data due to database connection issue"
-        })
-
-@app.route('/api/tournaments/<int:tournament_id>', methods=['GET'])
-def get_tournament(tournament_id):
-    logger.info(f"Richiesta GET /api/tournaments/{tournament_id}")
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("SELECT * FROM tournaments WHERE id = %s", (tournament_id,))
-            tournament = cur.fetchone()
-            
-            if tournament:
-                # Get investments for this tournament
-                cur.execute("""
-                    SELECT i.*, u.username 
-                    FROM investments i 
-                    JOIN users u ON i.user_id = u.id 
-                    WHERE i.tournament_id = %s
-                """, (tournament_id,))
-                investments = cur.fetchall()
-                tournament['investments'] = investments
-                
+    try:
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                cur.execute("SELECT * FROM tournaments")
+                tournaments = cur.fetchall()
                 cur.close()
                 conn.close()
-                logger.info(f"GET /api/tournaments/{tournament_id}: torneo trovato con {len(tournament.get('investments', [])) if tournament.get('investments') else 0} investimenti")
+                
+                # Converti i dati per la risposta JSON
+                tournaments_list = []
+                for tournament in tournaments:
+                    # Converti UUID a stringa per JSON
+                    if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
+                        tournament['id'] = str(tournament['id'])
+                    if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
+                        tournament['organizer_id'] = str(tournament['organizer_id'])
+                    tournaments_list.append(dict(tournament))
+                
                 return jsonify({
                     "status": "success",
-                    "data": tournament
+                    "data": tournaments_list
                 })
-            else:
-                cur.close()
+            except Exception as e:
+                logger.error(f"Errore query tournaments: {str(e)}")
+                logger.error(traceback.format_exc())
                 conn.close()
-                logger.warning(f"GET /api/tournaments/{tournament_id}: torneo non trovato")
+                # Fallback ai dati di esempio
                 return jsonify({
-                    "status": "error",
-                    "message": "Tournament not found"
-                }), 404
-        except Exception as e:
-            logger.error(f"Errore GET /api/tournaments/{tournament_id}: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
-    else:
-        # Fallback to sample data
-        logger.warning(f"GET /api/tournaments/{tournament_id}: connessione al database fallita, utilizzo dati di esempio")
-        tournament = next((t for t in sample_tournaments if t["id"] == tournament_id), None)
-        if tournament:
+                    "status": "success",
+                    "data": sample_tournaments,
+                    "note": "Using sample data due to database connection issue"
+                })
+        else:
+            # Fallback ai dati di esempio
             return jsonify({
                 "status": "success",
-                "data": tournament,
+                "data": sample_tournaments,
                 "note": "Using sample data due to database connection issue"
             })
+    except Exception as e:
+        logger.error(f"Errore endpoint tournaments: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/tournaments/<tournament_id>', methods=['GET'])
+def get_tournament(tournament_id):
+    try:
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verifica se l'ID è un UUID valido
+                try:
+                    # Tenta di convertire l'ID in UUID
+                    tournament_uuid = uuid.UUID(tournament_id)
+                    # Se la conversione ha successo, usa l'UUID nella query
+                    cur.execute("SELECT * FROM tournaments WHERE id = %s", (tournament_uuid,))
+                except ValueError:
+                    # Se non è un UUID valido, prova come stringa
+                    cur.execute("SELECT * FROM tournaments WHERE id::text = %s", (tournament_id,))
+                
+                tournament = cur.fetchone()
+                cur.close()
+                conn.close()
+                
+                if tournament:
+                    # Converti UUID a stringa per JSON
+                    if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
+                        tournament['id'] = str(tournament['id'])
+                    if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
+                        tournament['organizer_id'] = str(tournament['organizer_id'])
+                    
+                    return jsonify({
+                        "status": "success",
+                        "data": dict(tournament)
+                    })
+                else:
+                    # Fallback ai dati di esempio se il torneo non è trovato
+                    for tournament in sample_tournaments:
+                        if str(tournament["id"]) == str(tournament_id):
+                            return jsonify({
+                                "status": "success",
+                                "data": tournament,
+                                "note": "Using sample data due to database connection issue"
+                            })
+                    
+                    return jsonify({
+                        "status": "error",
+                        "message": "Tournament not found"
+                    }), 404
+            except Exception as e:
+                logger.error(f"Errore query tournament: {str(e)}")
+                logger.error(traceback.format_exc())
+                conn.close()
+                # Fallback ai dati di esempio
+                for tournament in sample_tournaments:
+                    if str(tournament["id"]) == str(tournament_id):
+                        return jsonify({
+                            "status": "success",
+                            "data": tournament,
+                            "note": "Using sample data due to database connection issue"
+                        })
+                
+                return jsonify({
+                    "status": "error",
+                    "message": str(e)
+                }), 500
         else:
+            # Fallback ai dati di esempio
+            for tournament in sample_tournaments:
+                if str(tournament["id"]) == str(tournament_id):
+                    return jsonify({
+                        "status": "success",
+                        "data": tournament,
+                        "note": "Using sample data due to database connection issue"
+                    })
+            
             return jsonify({
                 "status": "error",
                 "message": "Tournament not found"
             }), 404
+    except Exception as e:
+        logger.error(f"Errore endpoint tournament: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 @app.route('/api/tournaments', methods=['POST'])
 def create_tournament():
-    logger.info("Richiesta POST /api/tournaments")
-    data = request.json
-    required_fields = ['name', 'organizer', 'buy_in', 'prize_pool', 'start_date']
-    
-    for field in required_fields:
-        if field not in data:
-            logger.warning(f"POST /api/tournaments: campo richiesto mancante: {field}")
-            return jsonify({
-                "status": "error",
-                "message": f"Missing required field: {field}"
-            }), 400
-    
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            cur.execute("""
-                INSERT INTO tournaments (name, organizer, buy_in, prize_pool, start_date, status)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING *
-            """, (
-                data['name'],
-                data['organizer'],
-                data['buy_in'],
-                data['prize_pool'],
-                data['start_date'],
-                data.get('status', 'upcoming')
-            ))
-            
-            new_tournament = cur.fetchone()
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            logger.info(f"POST /api/tournaments: torneo creato con successo, ID: {new_tournament['id']}")
-            return jsonify({
-                "status": "success",
-                "message": "Tournament created successfully",
-                "data": new_tournament
-            }), 201
-        except Exception as e:
-            logger.error(f"Errore POST /api/tournaments: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
-            return jsonify({
-                "status": "error",
-                "message": str(e)
-            }), 500
-    else:
-        logger.error("POST /api/tournaments: connessione al database fallita")
-        return jsonify({
-            "status": "error",
-            "message": "Database connection error"
-        }), 500
-
-@app.route('/api/investments', methods=['POST'])
-def create_investment():
-    logger.info("Richiesta POST /api/investments")
-    data = request.json
-    required_fields = ['user_id', 'tournament_id', 'amount', 'share_percentage']
-    
-    for field in required_fields:
-        if field not in data:
-            logger.warning(f"POST /api/investments: campo richiesto mancante: {field}")
-            return jsonify({
-                "status": "error",
-                "message": f"Missing required field: {field}"
-            }), 400
-    
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Check if tournament exists
-            cur.execute("SELECT * FROM tournaments WHERE id = %s", (data['tournament_id'],))
-            tournament = cur.fetchone()
-            
-            if not tournament:
-                cur.close()
-                conn.close()
-                logger.warning(f"POST /api/investments: torneo non trovato, ID: {data['tournament_id']}")
+    try:
+        data = request.json
+        
+        # Validazione dei dati
+        required_fields = ['name', 'buy_in', 'total_prize', 'start_date']
+        for field in required_fields:
+            if field not in data:
                 return jsonify({
                     "status": "error",
-                    "message": "Tournament not found"
-                }), 404
-            
-            # Check if user exists
-            cur.execute("SELECT * FROM users WHERE id = %s", (data['user_id'],))
-            user = cur.fetchone()
-            
-            if not user:
+                    "message": f"Missing required field: {field}"
+                }), 400
+        
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Genera un nuovo UUID per il torneo
+                tournament_id = uuid.uuid4()
+                
+                # Adatta i nomi delle colonne alla struttura reale del database
+                cur.execute("""
+                    INSERT INTO tournaments (id, name, buy_in, total_prize, start_date, status, organizer_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    tournament_id,
+                    data['name'],
+                    data['buy_in'],
+                    data['total_prize'],
+                    data['start_date'],
+                    data.get('status', 'upcoming'),
+                    uuid.UUID(data.get('organizer_id')) if data.get('organizer_id') else None
+                ))
+                
+                tournament = cur.fetchone()
                 cur.close()
                 conn.close()
-                logger.warning(f"POST /api/investments: utente non trovato, ID: {data['user_id']}")
+                
+                # Converti UUID a stringa per JSON
+                if 'id' in tournament and isinstance(tournament['id'], uuid.UUID):
+                    tournament['id'] = str(tournament['id'])
+                if 'organizer_id' in tournament and isinstance(tournament['organizer_id'], uuid.UUID):
+                    tournament['organizer_id'] = str(tournament['organizer_id'])
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "Tournament created successfully",
+                    "data": dict(tournament)
+                }), 201
+            except Exception as e:
+                logger.error(f"Errore creazione tournament: {str(e)}")
+                logger.error(traceback.format_exc())
+                conn.close()
                 return jsonify({
                     "status": "error",
-                    "message": "User not found"
-                }), 404
-            
-            # Create investment
-            cur.execute("""
-                INSERT INTO investments (user_id, tournament_id, amount, share_percentage, status)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING *
-            """, (
-                data['user_id'],
-                data['tournament_id'],
-                data['amount'],
-                data['share_percentage'],
-                data.get('status', 'active')
-            ))
-            
-            new_investment = cur.fetchone()
-            conn.commit()
-            cur.close()
-            conn.close()
-            
-            logger.info(f"POST /api/investments: investimento creato con successo, ID: {new_investment['id']}")
-            return jsonify({
-                "status": "success",
-                "message": "Investment created successfully",
-                "data": new_investment
-            }), 201
-        except Exception as e:
-            logger.error(f"Errore POST /api/investments: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
+                    "message": str(e)
+                }), 500
+        else:
             return jsonify({
                 "status": "error",
-                "message": str(e)
+                "message": "Database connection error"
             }), 500
-    else:
-        logger.error("POST /api/investments: connessione al database fallita")
+    except Exception as e:
+        logger.error(f"Errore endpoint create tournament: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "status": "error",
-            "message": "Database connection error"
+            "message": str(e)
         }), 500
 
 @app.route('/api/users/register', methods=['POST'])
 def register_user():
-    logger.info("Richiesta POST /api/users/register")
-    data = request.json
-    required_fields = ['username', 'email', 'password']
-    
-    for field in required_fields:
-        if field not in data:
-            logger.warning(f"POST /api/users/register: campo richiesto mancante: {field}")
-            return jsonify({
-                "status": "error",
-                "message": f"Missing required field: {field}"
-            }), 400
-    
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Check if username already exists
-            cur.execute("SELECT * FROM users WHERE username = %s", (data['username'],))
-            if cur.fetchone():
-                cur.close()
-                conn.close()
-                logger.warning(f"POST /api/users/register: username già esistente: {data['username']}")
+    try:
+        data = request.json
+        
+        # Validazione dei dati
+        required_fields = ['username', 'email', 'password']
+        for field in required_fields:
+            if field not in data:
                 return jsonify({
                     "status": "error",
-                    "message": "Username already exists"
+                    "message": f"Missing required field: {field}"
                 }), 400
-            
-            # Check if email already exists
-            cur.execute("SELECT * FROM users WHERE email = %s", (data['email'],))
-            if cur.fetchone():
+        
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verifica se l'utente esiste già
+                cur.execute("SELECT * FROM users WHERE email = %s OR username = %s", (data['email'], data['username']))
+                existing_user = cur.fetchone()
+                
+                if existing_user:
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        "status": "error",
+                        "message": "User with this email or username already exists"
+                    }), 409
+                
+                # Genera un nuovo UUID per l'utente
+                user_id = uuid.uuid4()
+                
+                # Hash della password
+                password_hash = hash_password(data['password'])
+                
+                # Inserisci il nuovo utente
+                cur.execute("""
+                    INSERT INTO users (id, username, email, password_hash, wallet_address, created_at, is_active, is_verified)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    user_id,
+                    data['username'],
+                    data['email'],
+                    password_hash,
+                    data.get('wallet_address'),
+                    datetime.now(),
+                    True,
+                    False
+                ))
+                
+                user = cur.fetchone()
                 cur.close()
                 conn.close()
-                logger.warning(f"POST /api/users/register: email già esistente: {data['email']}")
+                
+                # Converti UUID a stringa per JSON
+                if 'id' in user and isinstance(user['id'], uuid.UUID):
+                    user['id'] = str(user['id'])
+                
+                # Genera token JWT
+                token = generate_token(str(user['id']))
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "User registered successfully",
+                    "data": {
+                        "user": dict(user),
+                        "token": token
+                    }
+                }), 201
+            except Exception as e:
+                logger.error(f"Errore registrazione utente: {str(e)}")
+                logger.error(traceback.format_exc())
+                conn.close()
                 return jsonify({
                     "status": "error",
-                    "message": "Email already exists"
-                }), 400
-            
-            # Create user
-            password_hash = hash_password(data['password'])
-            cur.execute("""
-                INSERT INTO users (username, email, password_hash, wallet_address)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, username, email, wallet_address, created_at
-            """, (
-                data['username'],
-                data['email'],
-                password_hash,
-                data.get('wallet_address')
-            ))
-            
-            new_user = cur.fetchone()
-            conn.commit()
-            
-            # Generate token
-            token = generate_token(new_user['id'])
-            
-            cur.close()
-            conn.close()
-            
-            logger.info(f"POST /api/users/register: utente registrato con successo, ID: {new_user['id']}")
-            return jsonify({
-                "status": "success",
-                "message": "User registered successfully",
-                "data": {
-                    "user": new_user,
-                    "token": token
-                }
-            }), 201
-        except Exception as e:
-            logger.error(f"Errore POST /api/users/register: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
+                    "message": str(e)
+                }), 500
+        else:
             return jsonify({
                 "status": "error",
-                "message": str(e)
+                "message": "Database connection error"
             }), 500
-    else:
-        logger.error("POST /api/users/register: connessione al database fallita")
+    except Exception as e:
+        logger.error(f"Errore endpoint register: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "status": "error",
-            "message": "Database connection error"
+            "message": str(e)
         }), 500
 
 @app.route('/api/users/login', methods=['POST'])
 def login_user():
-    logger.info("Richiesta POST /api/users/login")
-    data = request.json
-    required_fields = ['email', 'password']
-    
-    for field in required_fields:
-        if field not in data:
-            logger.warning(f"POST /api/users/login: campo richiesto mancante: {field}")
-            return jsonify({
-                "status": "error",
-                "message": f"Missing required field: {field}"
-            }), 400
-    
-    conn = get_db_connection()
-    if conn:
-        try:
-            cur = conn.cursor(cursor_factory=RealDictCursor)
-            
-            # Check if user exists
-            cur.execute("SELECT * FROM users WHERE email = %s", (data['email'],))
-            user = cur.fetchone()
-            
-            if not user:
-                cur.close()
-                conn.close()
-                logger.warning(f"POST /api/users/login: email non trovata: {data['email']}")
+    try:
+        data = request.json
+        
+        # Validazione dei dati
+        required_fields = ['email', 'password']
+        for field in required_fields:
+            if field not in data:
                 return jsonify({
                     "status": "error",
-                    "message": "Invalid email or password"
-                }), 401
-            
-            # Check password
-            password_hash = hash_password(data['password'])
-            if password_hash != user['password_hash']:
+                    "message": f"Missing required field: {field}"
+                }), 400
+        
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verifica le credenziali
+                password_hash = hash_password(data['password'])
+                cur.execute("SELECT * FROM users WHERE email = %s AND password_hash = %s", (data['email'], password_hash))
+                user = cur.fetchone()
+                
+                if not user:
+                    cur.close()
+                    conn.close()
+                    return jsonify({
+                        "status": "error",
+                        "message": "Invalid email or password"
+                    }), 401
+                
+                # Aggiorna last_login
+                cur.execute("UPDATE users SET last_login = %s WHERE id = %s", (datetime.now(), user['id']))
+                
                 cur.close()
                 conn.close()
-                logger.warning(f"POST /api/users/login: password errata per email: {data['email']}")
+                
+                # Converti UUID a stringa per JSON
+                if 'id' in user and isinstance(user['id'], uuid.UUID):
+                    user['id'] = str(user['id'])
+                
+                # Genera token JWT
+                token = generate_token(str(user['id']))
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "Login successful",
+                    "data": {
+                        "user": dict(user),
+                        "token": token
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Errore login utente: {str(e)}")
+                logger.error(traceback.format_exc())
+                conn.close()
                 return jsonify({
                     "status": "error",
-                    "message": "Invalid email or password"
-                }), 401
-            
-            # Generate token
-            token = generate_token(user['id'])
-            
-            cur.close()
-            conn.close()
-            
-            logger.info(f"POST /api/users/login: login riuscito, ID utente: {user['id']}")
-            return jsonify({
-                "status": "success",
-                "message": "Login successful",
-                "data": {
-                    "user": {
-                        "id": user['id'],
-                        "username": user['username'],
-                        "email": user['email'],
-                        "wallet_address": user['wallet_address'],
-                        "created_at": user['created_at']
-                    },
-                    "token": token
-                }
-            })
-        except Exception as e:
-            logger.error(f"Errore POST /api/users/login: {str(e)}")
-            logger.error(traceback.format_exc())
-            conn.close()
+                    "message": str(e)
+                }), 500
+        else:
             return jsonify({
                 "status": "error",
-                "message": str(e)
+                "message": "Database connection error"
             }), 500
-    else:
-        logger.error("POST /api/users/login: connessione al database fallita")
+    except Exception as e:
+        logger.error(f"Errore endpoint login: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({
             "status": "error",
-            "message": "Database connection error"
+            "message": str(e)
+        }), 500
+
+@app.route('/api/investments', methods=['POST'])
+def create_investment():
+    try:
+        data = request.json
+        
+        # Validazione dei dati
+        required_fields = ['user_id', 'tournament_id', 'amount']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({
+                    "status": "error",
+                    "message": f"Missing required field: {field}"
+                }), 400
+        
+        conn = get_db_connection()
+        if conn:
+            try:
+                cur = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Genera un nuovo UUID per l'investimento
+                investment_id = uuid.uuid4()
+                
+                # Converti gli ID in UUID se sono stringhe
+                user_id = data['user_id']
+                tournament_id = data['tournament_id']
+                
+                if isinstance(user_id, str):
+                    try:
+                        user_id = uuid.UUID(user_id)
+                    except ValueError:
+                        return jsonify({
+                            "status": "error",
+                            "message": "Invalid user_id format"
+                        }), 400
+                
+                if isinstance(tournament_id, str):
+                    try:
+                        tournament_id = uuid.UUID(tournament_id)
+                    except ValueError:
+                        return jsonify({
+                            "status": "error",
+                            "message": "Invalid tournament_id format"
+                        }), 400
+                
+                # Inserisci il nuovo investimento
+                cur.execute("""
+                    INSERT INTO investments (id, user_id, tournament_id, amount, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                """, (
+                    investment_id,
+                    user_id,
+                    tournament_id,
+                    data['amount'],
+                    data.get('status', 'active'),
+                    datetime.now()
+                ))
+                
+                investment = cur.fetchone()
+                cur.close()
+                conn.close()
+                
+                # Converti UUID a stringa per JSON
+                if 'id' in investment and isinstance(investment['id'], uuid.UUID):
+                    investment['id'] = str(investment['id'])
+                if 'user_id' in investment and isinstance(investment['user_id'], uuid.UUID):
+                    investment['user_id'] = str(investment['user_id'])
+                if 'tournament_id' in investment and isinstance(investment['tournament_id'], uuid.UUID):
+                    investment['tournament_id'] = str(investment['tournament_id'])
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "Investment created successfully",
+                    "data": dict(investment)
+                }), 201
+            except Exception as e:
+                logger.error(f"Errore creazione investment: {str(e)}")
+                logger.error(traceback.format_exc())
+                conn.close()
+                return jsonify({
+                    "status": "error",
+                    "message": str(e)
+                }), 500
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Database connection error"
+            }), 500
+    except Exception as e:
+        logger.error(f"Errore endpoint create investment: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "status": "error",
+            "message": str(e)
         }), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 3000)))
